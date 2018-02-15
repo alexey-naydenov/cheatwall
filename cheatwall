@@ -1,37 +1,60 @@
 #!/usr/bin/env bash
 
+image_size="1024x768"
+column_separator=^-$
+
 function usage {
     echo "Usage: cheatwall [OPTIONS] -- [IMAGEMAGIK_OPTIONS]"
 }
 
 function main {
-    while getopts ":hs:o:i:" opt ; do
+    while getopts ":hc:s:o:i:" opt ; do
 	case $opt in
- 	    s)
-		echo 's'
-		;;
- 	    i)
-		echo 'i'
-		;;
- 	    o)
-		echo 'o'
-		;;
+ 	    s) image_size=$OPTARG;;
+ 	    i) input_file=$OPTARG;;
+ 	    o) output_file=$OPTARG;;
  	    h)
 		usage
-		exit 0
-		;;
+		exit 0;;
  	    \?)
-		echo "invalaid option: -$OPTARG" >&2
-		exit 1
-		;;
+		echo "invalid option: -$OPTARG" >&2
+		exit 1;;
 	    :)
 		echo "option -$OPTARG requires an argument" >&2
-		exit 1
-		;;
+		exit 1;;
 	esac
     done
     shift $((OPTIND-1))
-    echo "leftover: " "$@"
+    
+    verify_arguments
+
+    image_width=$(echo $image_size | sed s/x.*//)
+    image_height=$(echo $image_size | sed s/.*x//)
+
+    column_count=$(grep $column_separator $input_file | wc -l)
+    column_count=$(expr $column_count + 1)
+    column_width=$(expr $image_width / $column_count)
+
+    cat $input_file | convert -size ${column_width}x${image_height} \
+			      "$@" pango:@- $output_file
+
+    # debug
+    set -o posix; set
 }
+
+function fail_with_message {
+    echo $1 >&2
+    echo
+    usage
+    exit 1
+}
+
+function verify_arguments {
+    if [[ ! $image_size =~ ^[0-9]+x[0-9]+$ ]]; then
+	fail_with_message "invalid image size: $image_size" >&2
+    fi
+}
+
+
 
 main "$@"

@@ -1,0 +1,6 @@
+C-x r k - kill and save rectangle
+C-x r y - yank rectangle
+-
+<tt>M-y</tt> - if after yank then replace by earlier kill
+-
+non emacs keybindings
