@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 image_size="1024x768"
-column_separator=^-$
+column_separator="^-$"
 
 function usage {
     echo "Usage: cheatwall [OPTIONS] -- [IMAGEMAGIK_OPTIONS]"
@@ -35,15 +35,24 @@ function main {
     column_count=$(expr $column_count + 1)
     column_width=$(expr $image_width / $column_count)
 
-    cat $input_file | convert -size ${column_width}x${image_height} \
-			      "$@" pango:@- $output_file
+    tmpdir=$(mktemp -d)
+
+    csplit -z -s -f "${tmpdir}/column" $input_file "/${column_separator}/" "{*}"
+
+    image_extension=${output_file##*.}
+    for column_file in $(find $tmpdir -type f); do
+	sed "/${column_separator}/d" $column_file \
+	    | convert -size ${column_width}x${image_height} \
+		      "$@" pango:@- "${column_file}.${image_extension}"
+    done
+    montage $(find $tmpdir -type f -iname "*.$image_extension") -geometry "1x1<" -tile "${column_count}x1" $output_file
 
     # debug
-    set -o posix; set
+    # set -o posix; set
 }
 
 function fail_with_message {
-    echo $1 >&2
+    echo "$1" >&2
     echo
     usage
     exit 1
@@ -51,7 +60,16 @@ function fail_with_message {
 
 function verify_arguments {
     if [[ ! $image_size =~ ^[0-9]+x[0-9]+$ ]]; then
-	fail_with_message "invalid image size: $image_size" >&2
+	fail_with_message "invalid image size format: $image_size"
+    fi
+    if [[ ! $input_file ]]; then
+	fail_with_message "input file is not specified"
+    fi
+    if [[ ! -f $input_file ]]; then
+	fail_with_message "input file does not exist: $input_file"
+    fi
+    if [[ ! $output_file ]]; then
+	fail_with_message "output file is not specified"
     fi
 }
 
