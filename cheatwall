@@ -2,15 +2,21 @@
 
 image_size="1024x768"
 column_separator="^-$"
+column_weights="1"
+# must be smaller then # of fake weights
+max_column_count=20
+# smplify script, weights for columns with unspecified weights
+fake_weights="1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1"
 
 function usage {
     echo "Usage: cheatwall [OPTIONS] -- [IMAGEMAGIK_OPTIONS]"
 }
 
 function main {
-    while getopts ":hc:s:o:i:" opt ; do
+    while getopts ":hc:s:w:o:i:" opt ; do
 	case $opt in
  	    s) image_size=$OPTARG;;
+	    w) column_weights=$OPTARG;;
  	    i) input_file=$OPTARG;;
  	    o) output_file=$OPTARG;;
  	    h)
@@ -33,19 +39,33 @@ function main {
 
     column_count=$(grep $column_separator $input_file | wc -l)
     column_count=$(expr $column_count + 1)
-    column_width=$(expr $image_width / $column_count)
+
+    if (( $column_count > $max_column_count )); then
+	fail_with_message "too many columns: $column_count"
+    fi
+
+    column_weights=$(echo $column_weights | sed "s/,/ /g")
+    column_weights=$column_weights" "$fake_weights
+    column_weights=($column_weights) # can not merge with operation above
+    total_weight=0
+    for i in $(seq 0 $(expr $column_count - 1) ); do
+	total_weight=$(expr $total_weight + ${column_weights[$i]})
+    done
 
     tmpdir=$(mktemp -d)
 
     csplit -z -s -f "${tmpdir}/column" $input_file "/${column_separator}/" "{*}"
+    column_files=($(find $tmpdir -type f | sort))
 
     image_extension=${output_file##*.}
-    for column_file in $(find $tmpdir -type f); do
-	sed "/${column_separator}/d" $column_file \
-	    | convert -size ${column_width}x${image_height} \
-		      "$@" pango:@- "${column_file}.${image_extension}"
+    for i in $(seq 0 $(expr $column_count - 1) ); do
+	column_width=$(expr ${column_weights[$i]} \* $image_width / $total_weight )
+    	sed "/${column_separator}/d" ${column_files[$i]} \
+    	    | convert -size ${column_width}x${image_height} \
+    		      "$@" pango:@- "${column_files[$i]}.${image_extension}"
+
     done
-    montage $(find $tmpdir -type f -iname "*.$image_extension") -geometry "1x1<" -tile "${column_count}x1" $output_file
+    convert $(find $tmpdir -type f -iname "*.$image_extension" | sort) +append $output_file
 
     # debug
     # set -o posix; set
@@ -61,6 +81,9 @@ function fail_with_message {
 function verify_arguments {
     if [[ ! $image_size =~ ^[0-9]+x[0-9]+$ ]]; then
 	fail_with_message "invalid image size format: $image_size"
+    fi
+    if [[ ! $column_weights =~ ^[0-9,]+$ ]]; then
+	fail_with_message "invalid column weights format: $column_weights"
     fi
     if [[ ! $input_file ]]; then
 	fail_with_message "input file is not specified"
